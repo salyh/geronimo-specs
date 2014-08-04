@@ -28,13 +28,29 @@ public class StoreClosedException extends MessagingException {
 	
     private transient Store _store;
 
-    public StoreClosedException(Store store) {
+    public StoreClosedException(final Store store) {
         super();
         _store = store;
     }
 
-    public StoreClosedException(Store store, String message) {
+    public StoreClosedException(final Store store, final String message) {
         super(message);
+        _store = store;
+    }
+    
+    /**
+     * Constructs a StoreClosedException with the specified
+     * detail message and embedded exception.  The exception is chained
+     * to this exception.
+     *
+     * @param store  The dead Store object
+     * @param message    The detailed error message
+     * @param e      The embedded exception
+     * @since        JavaMail 1.5
+     */
+    public StoreClosedException(final Store store, final String message, final Exception e) {
+        super(message, e);
+        _store = store;
     }
 
     public Store getStore() {

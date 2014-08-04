@@ -23,9 +23,11 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 
 import javax.mail.MessagingException;
+import javax.mail.Part;
 
 import junit.framework.TestCase;
 
@@ -68,7 +70,7 @@ public class MimeBodyPartTest extends TestCase {
 
 
     public void testIsMimeType() throws MessagingException {
-        MimeBodyPart part = new MimeBodyPart();
+        final MimeBodyPart part = new MimeBodyPart();
         assertTrue(part.isMimeType("text/plain"));
         assertTrue(part.isMimeType("text/*"));
 
@@ -79,22 +81,45 @@ public class MimeBodyPartTest extends TestCase {
 
 
     public void testGetDisposition() throws MessagingException {
-        MimeBodyPart part = new MimeBodyPart();
+        final MimeBodyPart part = new MimeBodyPart();
         assertNull(part.getDisposition());
 
         part.setDisposition("inline");
         assertEquals(part.getDisposition(), "inline");
     }
+    
+    public void testJavaMail15AttachmentDisposition() throws MessagingException, IOException {
+        final MimeBodyPart part = new MimeBodyPart();
+        assertNull(part.getDisposition());
+        final File testInput = new File(basedir, "src/test/resources/test.dat");
+        part.attachFile(testInput);
+        assertEquals(Part.ATTACHMENT, part.getDisposition());
+    }
+    
+    public void testJavaMail15EncodingAware() throws MessagingException, IOException {
+    	final File testInput = new File(basedir, "src/test/resources/test.dat");
+    	final MimeBodyPart part = new MimeBodyPart();
+        part.attachFile(testInput);
+        part.updateHeaders();
+        assertTrue(part.getDataHandler().getContentType().equals("application/octet-stream"));
+        assertEquals("7bit", part.getEncoding());
+        
+        final MimeBodyPart part2 = new MimeBodyPart();
+        part2.attachFile(testInput,"application/pdf","base64");
+        part2.updateHeaders();
+        assertTrue(part2.getDataHandler().getContentType().equals("application/pdf"));
+        assertEquals("base64", part2.getEncoding());
+    }
 
 
     public void testSetDescription() throws MessagingException, UnsupportedEncodingException {
-        MimeBodyPart part = new MimeBodyPart();
+        final MimeBodyPart part = new MimeBodyPart();
 
-        String simpleSubject = "Yada, yada";
+        final String simpleSubject = "Yada, yada";
 
-        String complexSubject = "Yada, yada\u0081";
+        final String complexSubject = "Yada, yada\u0081";
 
-        String mungedSubject = "Yada, yada\u003F";
+        final String mungedSubject = "Yada, yada\u003F";
 
         part.setDescription(simpleSubject);
         assertEquals(part.getDescription(), simpleSubject);
@@ -108,18 +133,18 @@ public class MimeBodyPartTest extends TestCase {
     }
 
     public void testSetFileName() throws Exception {
-        MimeBodyPart part = new MimeBodyPart();
+        final MimeBodyPart part = new MimeBodyPart();
         part.setFileName("test.dat");
 
         assertEquals("test.dat", part.getFileName());
 
-        ContentDisposition disp = new ContentDisposition(part.getHeader("Content-Disposition", null));
+        final ContentDisposition disp = new ContentDisposition(part.getHeader("Content-Disposition", null));
         assertEquals("test.dat", disp.getParameter("filename"));
 
-        ContentType type = new ContentType(part.getHeader("Content-Type", null));
+        final ContentType type = new ContentType(part.getHeader("Content-Type", null));
         assertEquals("test.dat", type.getParameter("name"));
 
-        MimeBodyPart part2 = new MimeBodyPart();
+        final MimeBodyPart part2 = new MimeBodyPart();
 
         part2.setHeader("Content-Type", type.toString());
 
@@ -133,7 +158,7 @@ public class MimeBodyPartTest extends TestCase {
     public void testAttachments() throws Exception {
         MimeBodyPart part = new MimeBodyPart();
 
-        byte[] testData = getFileData(testInput);
+        final byte[] testData = getFileData(testInput);
 
         part.attachFile(testInput);
         assertEquals(part.getFileName(), testInput.getName());
@@ -201,17 +226,17 @@ public class MimeBodyPartTest extends TestCase {
         compareFileData(testData, tempData);
     }
 
-    private byte[] getFileData(File source) throws Exception {
-        FileInputStream testIn = new FileInputStream(source);
+    private byte[] getFileData(final File source) throws Exception {
+        final FileInputStream testIn = new FileInputStream(source);
 
-        byte[] testData = new byte[(int)source.length()];
+        final byte[] testData = new byte[(int)source.length()];
 
         testIn.read(testData);
         testIn.close();
         return testData;
     }
 
-    private void compareFileData(byte[] file1, byte [] file2) {
+    private void compareFileData(final byte[] file1, final byte [] file2) {
         assertEquals(file1.length, file2.length);
         for (int i = 0; i < file1.length; i++) {
             assertEquals(file1[i], file2[i]);
@@ -226,6 +251,7 @@ public class MimeBodyPartTest extends TestCase {
         }
 
 
+        @Override
         public void updateHeaders() throws MessagingException {
             super.updateHeaders();
         }

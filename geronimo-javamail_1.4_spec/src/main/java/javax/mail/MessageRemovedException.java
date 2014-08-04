@@ -30,7 +30,20 @@ public class MessageRemovedException extends MessagingException {
         super();
     }
 
-    public MessageRemovedException(String message) {
+    public MessageRemovedException(final String message) {
         super(message);
+    }
+    
+    /**
+     * Constructs a MessageRemovedException with the specified
+     * detail message and embedded exception.  The exception is chained
+     * to this exception.
+     *
+     * @param s      The detailed error message
+     * @param e      The embedded exception
+     * @since        JavaMail 1.5
+     */
+    public MessageRemovedException(final String s, final Exception e) {
+        super(s, e);
     }
 }

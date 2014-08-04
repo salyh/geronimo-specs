@@ -1,23 +1,28 @@
-JavaMail Specification 1.4
+JavaMail Specification 1.5
 ==========================
 
-These classes are based on the JavaMail Specification taken from J2EE 1.4 API
-documentation and on the JavaMail 1.3 specification PDF.
+These classes are based on the JavaMailTM API Design Specification Version 1.5 which can be found here:
+o https://javamail.java.net/nonav/docs/JavaMail-1.5.pdf
+o http://download.oracle.com/otn-pub/jcp/java_mail-1_5-mrel2-spec/javamail-1.5.0-javadocs.zip
 
 The classes represent the JavaMail API and contain implementations of the 
 classes found in the javax.mail packages. In order to function correctly,
 these classes require:
 
-o The Java Activation Framework (JAF) in javax.activation
-o Java 2 (Java 1.2 or later)
+o The Java Activation Framework (JAF) 1.1 (or newer) in javax.activation unless you are using Java SE 6 or newer
+o J2SE 5.0/JDK 1.5 or newer
 o Implementations of the JavaMail providers to deal with pop/imap/etc.
   (You may use this with the geronimo-mail implementation or write your own)
 
 This contains no JavaDoc: see 
-  http://java.sun.com/products/javamail/
-  http://java.sun.com/j2ee/1.4/docs/api/
+  https://java.net/projects/javamail/pages/Home
+  http://docs.oracle.com/javaee/7/api/
 
 for more information on how to use JavaMail to send messages.
+
+JAF 1.1.1 is currently the newest version.  Note that JAF 1.1
+is included in JDK 1.6 and JAF 1.1.1 is included in JDK 1.6.0_10 and
+later.
 
 Configuration
 -------------

@@ -30,7 +30,20 @@ public class NoSuchProviderException extends MessagingException {
         super();
     }
 
-    public NoSuchProviderException(String message) {
+    public NoSuchProviderException(final String message) {
         super(message);
+    }
+    
+    /**
+     * Constructs a NoSuchProviderException with the specified
+     * detail message and embedded exception.  The exception is chained
+     * to this exception.
+     *
+     * @param message    The detailed error message
+     * @param e      The embedded exception
+     * @since        JavaMail 1.5
+     */
+    public NoSuchProviderException(final String message, final Exception e) {
+        super(message, e);
     }
 }

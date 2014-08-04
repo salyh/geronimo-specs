@@ -20,12 +20,10 @@
 package javax.mail.internet;
 
 import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-
 import java.util.Arrays;
 
 import javax.activation.DataSource;
@@ -40,12 +38,16 @@ import org.apache.geronimo.mail.util.SessionUtil;
  * @version $Rev$ $Date$
  */
 public class MimeMultipart extends Multipart {
-	private static final String MIME_IGNORE_MISSING_BOUNDARY = "mail.mime.multipart.ignoremissingendboundary";
-
+	private static final String MIME_IGNORE_MISSING_ENDBOUNDARY = "mail.mime.multipart.ignoremissingendboundary";
+	private static final String MIME_IGNORE_MISSING_BOUNDARY_PARAMETER = "mail.mime.multipart.ignoremissingboundaryparameter";
+	private static final String MIME_IGNORE_EXISTING_BOUNDARY_PARAMETER = "mail.mime.multipart.ignoreexistingboundaryparameter";
+	private static final String MIME_ALLOWEMPTY = "mail.mime.multipart.allowempty";
+	
     /**
      * DataSource that provides our InputStream.
      */
     protected DataSource ds;
+    
     /**
      * Indicates if the data has been parsed.
      */
@@ -54,11 +56,74 @@ public class MimeMultipart extends Multipart {
     // the content type information
     private transient ContentType type;
 
-    // indicates if we've seen the final boundary line when parsing.
-    private boolean complete = true;
+    /** Have we seen the final bounary line?
+    *
+    * @since   JavaMail 1.5
+    */
+    protected boolean complete = true;
 
-    // MIME multipart preable text that can appear before the first boundary line.
-    private String preamble = null;
+    /**
+     * The MIME multipart preamble text, the text that
+     * occurs before the first boundary line.
+     *
+     * @since   JavaMail 1.5
+     */
+    protected String preamble = null;
+    
+    
+    /**
+     * Flag corresponding to the "mail.mime.multipart.ignoremissingendboundary"
+     * property, set in the {@link #initializeProperties} method called from
+     * constructors and the parse method.
+     *
+     * @since   JavaMail 1.5
+     */
+    protected boolean ignoreMissingEndBoundary = true;
+
+    /**
+     * Flag corresponding to the
+     * "mail.mime.multipart.ignoremissingboundaryparameter"
+     * property, set in the {@link #initializeProperties} method called from
+     * constructors and the parse method.
+     *
+     * @since   JavaMail 1.5
+     */
+    protected boolean ignoreMissingBoundaryParameter = true;
+
+    /**
+     * Flag corresponding to the
+     * "mail.mime.multipart.ignoreexistingboundaryparameter"
+     * property, set in the {@link #initializeProperties} method called from
+     * constructors and the parse method.
+     *
+     * @since   JavaMail 1.5
+     */
+    protected boolean ignoreExistingBoundaryParameter = false;
+
+    /**
+     * Flag corresponding to the "mail.mime.multipart.allowempty"
+     * property, set in the {@link #initializeProperties} method called from
+     * constructors and the parse method.
+     *
+     * @since   JavaMail 1.5
+     */
+    protected boolean allowEmpty = false;
+
+    /**
+     * Initialize flags that control parsing behavior,
+     * based on System properties described above in
+     * the class documentation.
+     *
+     * @since   JavaMail 1.5
+     */
+    protected void initializeProperties() {
+        
+        ignoreMissingEndBoundary = SessionUtil.getBooleanProperty(MIME_IGNORE_MISSING_ENDBOUNDARY, true);
+        ignoreMissingBoundaryParameter = SessionUtil.getBooleanProperty(MIME_IGNORE_MISSING_BOUNDARY_PARAMETER, true);
+        ignoreExistingBoundaryParameter = SessionUtil.getBooleanProperty(MIME_IGNORE_EXISTING_BOUNDARY_PARAMETER, false);
+        allowEmpty = SessionUtil.getBooleanProperty(MIME_ALLOWEMPTY, false);
+         
+    }
 
     /**
      * Create an empty MimeMultipart with content type "multipart/mixed"
@@ -72,10 +137,11 @@ public class MimeMultipart extends Multipart {
      *
      * @param subtype the subtype
      */
-    public MimeMultipart(String subtype) {
+    public MimeMultipart(final String subtype) {
         type = new ContentType("multipart", subtype, null);
         type.setParameter("boundary", getBoundary());
         contentType = type.toString();
+        initializeProperties();
     }
 
     /**
@@ -84,7 +150,7 @@ public class MimeMultipart extends Multipart {
      * @param dataSource the DataSource to use
      * @throws MessagingException
      */
-    public MimeMultipart(DataSource dataSource) throws MessagingException {
+    public MimeMultipart(final DataSource dataSource) throws MessagingException {
         ds = dataSource;
         if (dataSource instanceof MultipartDataSource) {
             super.setMultipartDataSource((MultipartDataSource) dataSource);
@@ -99,26 +165,52 @@ public class MimeMultipart extends Multipart {
             parsed = false;
         }
     }
+    
+    
+    /**
+     * Construct a MimeMultipart object of the default "mixed" subtype,
+     * and with the given body parts.  More body parts may be added later.
+     *
+     * @since   JavaMail 1.5
+     */
+    public MimeMultipart(final BodyPart... parts) throws MessagingException {
+        this("mixed");
+        this.parts.addAll(Arrays.asList(parts));
+    }
 
-    public void setSubType(String subtype) throws MessagingException {
+    /**
+     * Construct a MimeMultipart object of the given subtype
+     * and with the given body parts.  More body parts may be added later.
+     *
+     * @since   JavaMail 1.5
+     */
+    public MimeMultipart(final String subtype, final BodyPart... parts)
+                throws MessagingException {
+        this(subtype);
+        this.parts.addAll(Arrays.asList(parts));
+    }
+
+    public void setSubType(final String subtype) throws MessagingException {
         type.setSubType(subtype);
         contentType = type.toString();
     }
 
+    @Override
     public int getCount() throws MessagingException {
         parse();
         return super.getCount();
     }
 
-    public synchronized BodyPart getBodyPart(int part) throws MessagingException {
+    @Override
+    public synchronized BodyPart getBodyPart(final int part) throws MessagingException {
         parse();
         return super.getBodyPart(part);
     }
 
-    public BodyPart getBodyPart(String cid) throws MessagingException {
+    public BodyPart getBodyPart(final String cid) throws MessagingException {
         parse();
         for (int i = 0; i < parts.size(); i++) {
-            MimeBodyPart bodyPart = (MimeBodyPart) parts.get(i);
+            final MimeBodyPart bodyPart = (MimeBodyPart) parts.get(i);
             if (cid.equals(bodyPart.getContentID())) {
                 return bodyPart;
             }
@@ -129,7 +221,7 @@ public class MimeMultipart extends Multipart {
     protected void updateHeaders() throws MessagingException {
         parse();
         for (int i = 0; i < parts.size(); i++) {
-            MimeBodyPart bodyPart = (MimeBodyPart) parts.get(i);
+            final MimeBodyPart bodyPart = (MimeBodyPart) parts.get(i);
             bodyPart.updateHeaders();
         }
     }
@@ -137,20 +229,25 @@ public class MimeMultipart extends Multipart {
     private static byte[] dash = { '-', '-' };
     private static byte[] crlf = { 13, 10 };
 
-    public void writeTo(OutputStream out) throws IOException, MessagingException {
+    @Override
+    public void writeTo(final OutputStream out) throws IOException, MessagingException {
         parse();
-        String boundary = type.getParameter("boundary");
-        byte[] bytes = boundary.getBytes("ISO8859-1");
+        final String boundary = type.getParameter("boundary");
+        final byte[] bytes = boundary.getBytes("ISO8859-1");
+        
+        if(!allowEmpty && parts.size() == 0) {
+            throw new MessagingException("Multipart content with no body parts is not allowed");
+        }
 
         if (preamble != null) {
-            byte[] preambleBytes = preamble.getBytes("ISO8859-1");
+            final byte[] preambleBytes = preamble.getBytes("ISO8859-1");
             // write this out, followed by a line break.
             out.write(preambleBytes);
             out.write(crlf);
         }
 
         for (int i = 0; i < parts.size(); i++) {
-            BodyPart bodyPart = (BodyPart) parts.get(i);
+            final BodyPart bodyPart = (BodyPart) parts.get(i);
             out.write(dash);
             out.write(bytes);
             out.write(crlf);
@@ -168,23 +265,45 @@ public class MimeMultipart extends Multipart {
         if (parsed) {
             return;
         }
+                
+        initializeProperties();
 
         try {
-            ContentType cType = new ContentType(contentType);
-            InputStream is = new BufferedInputStream(ds.getInputStream());
+            final ContentType cType = new ContentType(contentType);
+            final String boundaryString = cType.getParameter("boundary");
+            
+            if(!ignoreMissingBoundaryParameter && boundaryString  == null) {
+                throw new MessagingException("Missing boundary parameter in content-type");
+            }           
+                        
+            final InputStream is = new BufferedInputStream(ds.getInputStream());
             BufferedInputStream pushbackInStream = null;
-            String boundaryString = cType.getParameter("boundary");
+            boolean boundaryFound = false;
+            
             byte[] boundary = null;
-            if (boundaryString == null) {
+            if (boundaryString == null || ignoreExistingBoundaryParameter) {
                 pushbackInStream = new BufferedInputStream(is, 1200);
                 // read until we find something that looks like a boundary string
                 boundary = readTillFirstBoundary(pushbackInStream);
+                boundaryFound = boundary != null;
             }
             else {
                 boundary = ("--" + boundaryString).getBytes("ISO8859-1");
                 pushbackInStream = new BufferedInputStream(is, boundary.length + 1000);
-                readTillFirstBoundary(pushbackInStream, boundary);
+                boundaryFound = readTillFirstBoundary(pushbackInStream, boundary);
             }
+            
+            
+            
+            if(allowEmpty && !boundaryFound) {
+            	parsed = true;
+                return;
+            }
+            
+            if(!allowEmpty && !boundaryFound) {
+                throw new MessagingException("Multipart content with no body parts is not allowed");
+            }
+            
 
             while (true) {
                 MimeBodyPartInputStream partStream;
@@ -193,24 +312,29 @@ public class MimeMultipart extends Multipart {
 
                 // terminated by an EOF rather than a proper boundary?
                 if (!partStream.boundaryFound) {
-                    if (!SessionUtil.getBooleanProperty(MIME_IGNORE_MISSING_BOUNDARY, true)) {
+                	
+                    if (!ignoreMissingEndBoundary) {
                         throw new MessagingException("Missing Multi-part end boundary");
                     }
                     complete = false;
+                    break;
                 }
                 // if we hit the final boundary, stop processing this
                 if (partStream.finalBoundaryFound) {
                     break;
                 }
             }
-        } catch (Exception e){
+            
+           
+            
+        } catch (final Exception e){
             throw new MessagingException(e.toString(),e);
         }
         parsed = true;
     }
 
     /**
-     * Move the read pointer to the begining of the first part
+     * Move the read pointer to the beginning of the first part
      * read till the end of first boundary.  Any data read before this point are
      * saved as the preamble.
      *
@@ -218,21 +342,21 @@ public class MimeMultipart extends Multipart {
      * @param boundary
      * @throws MessagingException
      */
-    private byte[] readTillFirstBoundary(BufferedInputStream pushbackInStream) throws MessagingException {
-        ByteArrayOutputStream preambleStream = new ByteArrayOutputStream();
+    private byte[] readTillFirstBoundary(final BufferedInputStream pushbackInStream) throws MessagingException {
+        final ByteArrayOutputStream preambleStream = new ByteArrayOutputStream();
 
         try {
             while (true) {
                 // read the next line
-                byte[] line = readLine(pushbackInStream);
+                final byte[] line = readLine(pushbackInStream);
                 // hit an EOF?
-                if (line == null) {
-                    throw new MessagingException("Unexpected End of Stream while searching for first Mime Boundary");
+                if (line == null || line.length==0) {
+                    return null;//throw new MessagingException("Unexpected End of Stream while searching for first Mime Boundary");
                 }
                 // if this looks like a boundary, then make it so
                 if (line.length > 2 && line[0] == '-' && line[1] == '-') {
                     // save the preamble, if there is one.
-                    byte[] preambleBytes = preambleStream.toByteArray();
+                    final byte[] preambleBytes = preambleStream.toByteArray();
                     if (preambleBytes.length > 0) {
                         preamble = new String(preambleBytes, "ISO8859-1");
                     }
@@ -245,7 +369,7 @@ public class MimeMultipart extends Multipart {
                     preambleStream.write('\n');
                 }
             }
-        } catch (IOException ioe) {
+        } catch (final IOException ioe) {
             throw new MessagingException(ioe.toString(), ioe);
         }
     }
@@ -261,7 +385,7 @@ public class MimeMultipart extends Multipart {
      * @return A byte array with white space characters removed,
      *         if necessary.
      */
-    private byte[] stripLinearWhiteSpace(byte[] line) {
+    private byte[] stripLinearWhiteSpace(final byte[] line) {
         int index = line.length - 1;
         // if the last character is not a space or tab, we
         // can use this unchanged
@@ -275,13 +399,13 @@ public class MimeMultipart extends Multipart {
             }
         }
         // make a shorter copy of this
-        byte[] newLine = new byte[index + 1];
+        final byte[] newLine = new byte[index + 1];
         System.arraycopy(line, 0, newLine, 0, index + 1);
         return newLine;
     }
 
     /**
-     * Move the read pointer to the begining of the first part
+     * Move the read pointer to the beginning of the first part
      * read till the end of first boundary.  Any data read before this point are
      * saved as the preamble.
      *
@@ -289,26 +413,26 @@ public class MimeMultipart extends Multipart {
      * @param boundary
      * @throws MessagingException
      */
-    private void readTillFirstBoundary(BufferedInputStream pushbackInStream, byte[] boundary) throws MessagingException {
-        ByteArrayOutputStream preambleStream = new ByteArrayOutputStream();
+    private boolean readTillFirstBoundary(final BufferedInputStream pushbackInStream, final byte[] boundary) throws MessagingException {
+        final ByteArrayOutputStream preambleStream = new ByteArrayOutputStream();
 
         try {
             while (true) {
                 // read the next line
-                byte[] line = readLine(pushbackInStream);
+                final byte[] line = readLine(pushbackInStream);
                 // hit an EOF?
-                if (line == null) {
-                    throw new MessagingException("Unexpected End of Stream while searching for first Mime Boundary");
+                if (line == null || line.length==0) {
+                	return false;//throw new MessagingException("Unexpected End of Stream while searching for first Mime Boundary");
                 }
 
                 // apply the boundary comparison rules to this
                 if (compareBoundary(line, boundary)) {
                     // save the preamble, if there is one.
-                    byte[] preambleBytes = preambleStream.toByteArray();
+                    final byte[] preambleBytes = preambleStream.toByteArray();
                     if (preambleBytes.length > 0) {
                         preamble = new String(preambleBytes, "ISO8859-1");
                     }
-                    return;
+                    return true;
                 }
 
                 // this is part of the preamble.
@@ -316,14 +440,14 @@ public class MimeMultipart extends Multipart {
                 preambleStream.write('\r');
                 preambleStream.write('\n');
             }
-        } catch (IOException ioe) {
+        } catch (final IOException ioe) {
             throw new MessagingException(ioe.toString(), ioe);
         }
     }
 
 
     /**
-     * Peform a boundary comparison, taking into account
+     * Perform a boundary comparison, taking into account
      * potential linear white space
      *
      * @param line     The line to compare.
@@ -332,7 +456,7 @@ public class MimeMultipart extends Multipart {
      * @return true if this is a valid boundary line, false for
      *         any mismatches.
      */
-    private boolean compareBoundary(byte[] line, byte[] boundary) {
+    private boolean compareBoundary(final byte[] line, final byte[] boundary) {
         // if the line is too short, this is an easy failure
         if (line.length < boundary.length) {
             return false;
@@ -370,9 +494,9 @@ public class MimeMultipart extends Multipart {
      *         null if there's nothing left in the stream.
      * @exception MessagingException
      */
-    private byte[] readLine(BufferedInputStream in) throws IOException
+    private byte[] readLine(final BufferedInputStream in) throws IOException
     {
-        ByteArrayOutputStream line = new ByteArrayOutputStream();
+        final ByteArrayOutputStream line = new ByteArrayOutputStream();
 
         while (in.available() > 0) {
             int value = in.read();
@@ -407,19 +531,19 @@ public class MimeMultipart extends Multipart {
     }
 
 
-    protected InternetHeaders createInternetHeaders(InputStream in) throws MessagingException {
+    protected InternetHeaders createInternetHeaders(final InputStream in) throws MessagingException {
         return new InternetHeaders(in);
     }
 
-    protected MimeBodyPart createMimeBodyPart(InternetHeaders headers, byte[] data) throws MessagingException {
+    protected MimeBodyPart createMimeBodyPart(final InternetHeaders headers, final byte[] data) throws MessagingException {
         return new MimeBodyPart(headers, data);
     }
 
-    protected MimeBodyPart createMimeBodyPart(InputStream in) throws MessagingException {
+    protected MimeBodyPart createMimeBodyPart(final InputStream in) throws MessagingException {
         return new MimeBodyPart(in);
     }
 
-    // static used to track boudary value allocations to help ensure uniqueness.
+    // static used to track boundary value allocations to help ensure uniqueness.
     private static int part;
 
     private synchronized static String getBoundary() {
@@ -427,7 +551,7 @@ public class MimeMultipart extends Multipart {
         synchronized(MimeMultipart.class) {
             i = part++;
         }
-        StringBuffer buf = new StringBuffer(64);
+        final StringBuffer buf = new StringBuffer(64);
         buf.append("----=_Part_").append(i).append('_').append((new Object()).hashCode()).append('.').append(System.currentTimeMillis());
         return buf.toString();
     }
@@ -438,7 +562,7 @@ public class MimeMultipart extends Multipart {
         byte[] boundary;
         public boolean finalBoundaryFound = false;
 
-        public MimeBodyPartInputStream(BufferedInputStream inStream, byte[] boundary) {
+        public MimeBodyPartInputStream(final BufferedInputStream inStream, final byte[] boundary) {
             super();
             this.inStream = inStream;
             this.boundary = boundary;
@@ -451,18 +575,17 @@ public class MimeMultipart extends Multipart {
          * @return The read character, or -1 if an EOF was encountered.
          * @exception IOException
          */
+        @Override
         public int read() throws IOException {
             if (boundaryFound) {
                 return -1;
             }
 
             // read the next value from stream
-            int firstChar = inStream.read();
+            final int firstChar = inStream.read();
             // premature end?  Handle it like a boundary located
             if (firstChar == -1) {
-                boundaryFound = true;
-                // also mark this as the end
-                finalBoundaryFound = true;
+            	//DO NOT treat this a a boundary because if we do so we have no chance to detect missing end boundaries
                 return -1;
             }
 
@@ -649,7 +772,7 @@ public class MimeMultipart extends Multipart {
      *
      * @exception MessagingException
      */
-    public void setPreamble(String preamble) throws MessagingException {
+    public void setPreamble(final String preamble) throws MessagingException {
         this.preamble = preamble;
     }
 }

@@ -30,7 +30,20 @@ public class MethodNotSupportedException extends MessagingException {
         super();
     }
 
-    public MethodNotSupportedException(String message) {
+    public MethodNotSupportedException(final String message) {
         super(message);
+    }
+    
+    /**
+     * Constructs a MethodNotSupportedException with the specified
+     * detail message and embedded exception.  The exception is chained
+     * to this exception.
+     *
+     * @param s      The detailed error message
+     * @param e      The embedded exception
+     * @since        JavaMail 1.5
+     */
+    public MethodNotSupportedException(final String s, final Exception e) {
+        super(s, e);
     }
 }

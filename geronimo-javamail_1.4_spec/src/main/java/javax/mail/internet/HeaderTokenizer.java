@@ -29,10 +29,10 @@ public class HeaderTokenizer {
         public static final int COMMENT = -3;
         public static final int EOF = -4;
         public static final int QUOTEDSTRING = -2;
-        private int _type;
-        private String _value;
+        private final int _type;
+        private final String _value;
 
-        public Token(int type, String value) {
+        public Token(final int type, final String value) {
             _type = type;
             _value = value;
         }
@@ -46,45 +46,92 @@ public class HeaderTokenizer {
         }
     }
 
+    private static final char NUL = '\0';
     private static final Token EOF = new Token(Token.EOF, null);
     // characters not allowed in MIME
     public static final String MIME = "()<>@,;:\\\"\t []/?=";
-    // charaters not allowed in RFC822
+    // characters not allowed in RFC822
     public static final String RFC822 = "()<>@,;:\\\"\t .[]";
     private static final String WHITE = " \t\n\r";
-    private String _delimiters;
-    private String _header;
-    private boolean _skip;
+    private final String _delimiters;
+    private final String _header;
+    private final int _headerLength;
+    private final boolean _skip;
     private int pos;
 
-    public HeaderTokenizer(String header) {
+    public HeaderTokenizer(final String header) {
         this(header, RFC822);
     }
 
-    public HeaderTokenizer(String header, String delimiters) {
+    public HeaderTokenizer(final String header, final String delimiters) {
         this(header, delimiters, true);
     }
 
-    public HeaderTokenizer(String header,
-                           String delimiters,
-                           boolean skipComments) {
+    public HeaderTokenizer(final String header,
+                           final String delimiters,
+                           final boolean skipComments) {
         _skip = skipComments;
         _header = header;
         _delimiters = delimiters;
+        _headerLength=header.length();
     }
 
+    //Return the rest of the Header.
+    //null is returned if we are already at end of header
     public String getRemainder() {
+        
+        if(pos > _headerLength) {
+            return null;
+        }
+        
         return _header.substring(pos);
     }
 
     public Token next() throws ParseException {
-        return readToken();
+        return readToken(NUL, false);
+    }
+    
+    /**
+     * Parses the next token from this String.
+     * If endOfAtom is not NUL, the token extends until the
+     * endOfAtom character is seen, or to the end of the header.
+     * This method is useful when parsing headers that don't
+     * obey the MIME specification, e.g., by failing to quote
+     * parameter values that contain spaces.
+     *
+     * @param   endOfAtom   if not NUL, character marking end of token
+     * @return      the next Token
+     * @exception   ParseException if the parse fails
+     * @since       JavaMail 1.5
+     */
+    public Token next(final char endOfAtom) throws ParseException {
+        return next(endOfAtom, false);
     }
 
+    /**
+     * Parses the next token from this String.
+     * endOfAtom is handled as above.  If keepEscapes is true,
+     * any backslash escapes are preserved in the returned string.
+     * This method is useful when parsing headers that don't
+     * obey the MIME specification, e.g., by failing to escape
+     * backslashes in the filename parameter.
+     *
+     * @param   endOfAtom   if not NUL, character marking end of token
+     * @param   keepEscapes keep all backslashes in returned string?
+     * @return      the next Token
+     * @exception   ParseException if the parse fails
+     * @since       JavaMail 1.5
+     */
+    public Token next(final char endOfAtom, final boolean keepEscapes)
+                throws ParseException {        
+        return readToken(endOfAtom, keepEscapes);
+    }
+                
+
     public Token peek() throws ParseException {
-        int start = pos;
+        final int start = pos;
         try {
-            return readToken();
+            return readToken(NUL, false);
         } finally {
             pos = start;
         }
@@ -97,11 +144,14 @@ public class HeaderTokenizer {
      */
     private Token readAtomicToken() {
         // skip to next delimiter
-        int start = pos;
-        while (++pos < _header.length()) {
+        final int start = pos;
+        final StringBuilder sb = new StringBuilder();
+        sb.append(_header.charAt(pos));
+        while (++pos < _headerLength) {
             // break on the first non-atom character.
-            char ch = _header.charAt(pos);
-            if (_delimiters.indexOf(_header.charAt(pos)) != -1 || ch < 32 || ch >= 127) {
+            final char ch = _header.charAt(pos);
+         
+            if ((_delimiters.indexOf(_header.charAt(pos)) != -1 || ch < 32 || ch >= 127)) {
                 break;
             }
         }
@@ -116,32 +166,42 @@ public class HeaderTokenizer {
      *         tokens are also skipped if indicated.
      * @exception ParseException
      */
-    private Token readToken() throws ParseException {
-        if (pos >= _header.length()) {
+    private Token readToken(final char endOfAtom, final boolean keepEscapes) throws ParseException {
+        if (pos >= _headerLength) {
             return EOF;
         } else {
-            char c = _header.charAt(pos);
+            final char c = _header.charAt(pos);
             // comment token...read and skip over this
             if (c == '(') {
-                Token comment = readComment();
+                final Token comment = readComment(keepEscapes);
                 if (_skip) {
-                    return readToken();
+                    return readToken(endOfAtom, keepEscapes);
                 } else {
                     return comment;
                 }
                 // quoted literal
             } else if (c == '\"') {
-                return readQuotedString();
+                return readQuotedString('"', keepEscapes, 1);
             // white space, eat this and find a real token.
             } else if (WHITE.indexOf(c) != -1) {
                 eatWhiteSpace();
-                return readToken();
+                return readToken(endOfAtom, keepEscapes);
             // either a CTL or special.  These characters have a self-defining token type.
             } else if (c < 32 || c >= 127 || _delimiters.indexOf(c) != -1) {
+                
+                if (endOfAtom != NUL && c != endOfAtom) {
+                    return readQuotedString(endOfAtom, keepEscapes, 0);
+                }
+                
+                
                 pos++;
-                return new Token((int)c, String.valueOf(c));
+                return new Token(c, String.valueOf(c));
             } else {
                 // start of an atom, parse it off.
+                if (endOfAtom != NUL && c != endOfAtom) {
+                    return readQuotedString(endOfAtom, keepEscapes, 0);
+                }
+                
                 return readAtomicToken();
             }
         }
@@ -157,17 +217,22 @@ public class HeaderTokenizer {
      * @return The processed string value.
      * @exception ParseException
      */
-    private String getEscapedValue(int start, int end) throws ParseException {
-        StringBuffer value = new StringBuffer();
+    private String getEscapedValue(final int start, final int end, final boolean keepEscapes) throws ParseException {
+        final StringBuffer value = new StringBuffer();
 
         for (int i = start; i < end; i++) {
-            char ch = _header.charAt(i);
+            final char ch = _header.charAt(i);
             // is this an escape character?
             if (ch == '\\') {
                 i++;
                 if (i == end) {
                     throw new ParseException("Invalid escape character");
                 }
+                
+                if(keepEscapes) {
+                    value.append("\\");
+                }
+                
                 value.append(_header.charAt(i));
             }
             // line breaks are ignored, except for naked '\n' characters, which are consider
@@ -179,7 +244,8 @@ public class HeaderTokenizer {
                 }
             }
             else {
-                // just append the ch value.
+                 
+                 // just append the ch value.
                 value.append(ch);
             }
         }
@@ -193,15 +259,15 @@ public class HeaderTokenizer {
      * @return A comment token with the token value.
      * @exception ParseException
      */
-    private Token readComment() throws ParseException {
-        int start = pos + 1;
+    private Token readComment(final boolean keepEscapes) throws ParseException {
+        final int start = pos + 1;
         int nesting = 1;
 
         boolean requiresEscaping = false;
 
         // skip to end of comment/string
-        while (++pos < _header.length()) {
-            char ch = _header.charAt(pos);
+        while (++pos < _headerLength) {
+            final char ch = _header.charAt(pos);
             if (ch == ')') {
                 nesting--;
                 if (nesting == 0) {
@@ -227,7 +293,7 @@ public class HeaderTokenizer {
 
         String value;
         if (requiresEscaping) {
-            value = getEscapedValue(start, pos);
+            value = getEscapedValue(start, pos, keepEscapes);
         }
         else {
             value = _header.substring(start, pos++);
@@ -242,17 +308,18 @@ public class HeaderTokenizer {
      * @return The QUOTEDSTRING token with the value.
      * @exception ParseException
      */
-    private Token readQuotedString() throws ParseException {
-        int start = pos+1;
+    private Token readQuotedString(final char endChar, final boolean keepEscapes, final int offset) throws ParseException {
+        final int start = pos+offset;
         boolean requiresEscaping = false;
 
         // skip to end of comment/string
-        while (++pos < _header.length()) {
-            char ch = _header.charAt(pos);
-            if (ch == '"') {
+        while (++pos < _headerLength) {
+            final char ch = _header.charAt(pos);
+
+            if (ch == endChar) {
                 String value;
                 if (requiresEscaping) {
-                    value = getEscapedValue(start, pos++);
+                    value = getEscapedValue(start, pos++, keepEscapes);
                 }
                 else {
                     value = _header.substring(start, pos++);
@@ -277,8 +344,9 @@ public class HeaderTokenizer {
      */
     private void eatWhiteSpace() {
         // skip to end of whitespace
-        while (++pos < _header.length()
-                && WHITE.indexOf(_header.charAt(pos)) != -1)
-            ;
+        while (++pos < _headerLength
+                && WHITE.indexOf(_header.charAt(pos)) != -1) {
+			;
+		}
     }
 }

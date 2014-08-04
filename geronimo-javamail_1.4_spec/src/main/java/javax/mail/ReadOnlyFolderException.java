@@ -28,15 +28,30 @@ public class ReadOnlyFolderException extends MessagingException {
 	
     private transient Folder _folder;
 
-    public ReadOnlyFolderException(Folder folder) {
+    public ReadOnlyFolderException(final Folder folder) {
         this(folder, "Folder not found: " + folder.getName());
     }
 
-    public ReadOnlyFolderException(Folder folder, String message) {
+    public ReadOnlyFolderException(final Folder folder, final String message) {
         super(message);
         _folder = folder;
     }
 
+    /**
+     * Constructs a ReadOnlyFolderException with the specified
+     * detail message and embedded exception.  The exception is chained
+     * to this exception.
+     *
+     * @param folder     The Folder
+     * @param message    The detailed error message
+     * @param e      The embedded exception
+     * @since        JavaMail 1.5
+     */
+    public ReadOnlyFolderException(final Folder folder, final String message, final Exception e) { 
+        super(message, e);
+        _folder = folder;
+    }
+    
     public Folder getFolder() {
         return _folder;
     }

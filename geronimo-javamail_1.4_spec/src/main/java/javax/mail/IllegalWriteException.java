@@ -30,7 +30,20 @@ public class IllegalWriteException extends MessagingException {
         super();
     }
 
-    public IllegalWriteException(String message) {
+    public IllegalWriteException(final String message) {
         super(message);
+    }
+    
+    /**
+     * Constructs an IllegalWriteException with the specified
+     * detail message and embedded exception.  The exception is chained
+     * to this exception.
+     *
+     * @param s      The detailed error message
+     * @param e      The embedded exception
+     * @since        JavaMail 1.5
+     */
+    public IllegalWriteException(final String s, final Exception e) {
+        super(s, e);
     }
 }
